@@ -1,0 +1,12 @@
+ADMIN_PORT=9071
+ADMIN_PW=test123
+HTTPS_PORT=443
+SOAPSERVICE_PORT=8443
+# EX: zmc.com
+ZIMBRA_DEFAULT_DOMAIN=<target-zimbra-default-domain>
+# EX: proxy (not fqdn)
+PROXY_HOSTNAME=<proxy-hostname>
+# EX: ldap (not fqdn) - for single node Zimbra use same value as PROXY_HOSTNAME
+LDAP_HOSTNAME=<ldap-hostname>
+# EX: mailbox (not fqdn) - for single node Zimbra use same value as PROXY_HOSTNAME
+MAILBOX_HOSTNAME=<mailbox-hostname>

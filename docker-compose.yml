@@ -1,0 +1,20 @@
+version: '3.4'
+
+services:
+  test:
+    env_file: .env
+    image: ${IMG}
+    container_name: test
+    hostname: test
+    build:
+      context: '.'
+      dockerfile: 'build/Dockerfile'
+    volumes:
+      - ./logs:/opt/qa/logs
+    entrypoint:
+      - /zimbra/init
+      - --shutdown
+      - "no"
+    network_mode: "host"
+
+

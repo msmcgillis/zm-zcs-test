@@ -1,0 +1,184 @@
+#!/bin/bash
+DN=$(dirname "$0")
+# shellcheck source=./init-common
+source "${DN}/init-common"
+
+[ -z "$ADMIN_PORT" ] && echo "ADMIN_PORT not defined" && exit 1
+[ -z "$ADMIN_PW" ] && echo "ADMIN_PW not defined" && exit 1
+[ -z "$HOSTNAME" ] && echo "HOSTNAME not defined" && exit 1
+[ -z "$HTTPS_PORT" ] && echo "HTTPS_PORT not defined" && exit 1
+[ -z "$LDAP_HOSTNAME" ] && echo "LDAP_HOSTNAME not defined}" && exit 1
+[ -z "$MAILBOX_HOSTNAME" ] && echo "MAILBOX_HOSTNAME not defined}" && exit 1
+[ -z "$PROXY_HOSTNAME" ] && echo "PROXY_HOSTNAME not defined}" && exit 1
+[ -z "$SOAPSERVICE_PORT" ] && echo "SOAPSERVICE_PORT not defined" && exit 1
+[ -z "$ZIMBRA_DEFAULT_DOMAIN" ] && echo "ZIMBRA_DEFAULT_DOMAIN not defined" && exit 1
+
+
+ldap_fqdn="${LDAP_HOSTNAME}.${ZIMBRA_DEFAULT_DOMAIN}"
+mailbox_fqdn="${MAILBOX_HOSTNAME}.${ZIMBRA_DEFAULT_DOMAIN}"
+proxy_fqdn="${PROXY_HOSTNAME}.${ZIMBRA_DEFAULT_DOMAIN}"
+
+run_soap=no
+run_genesis=no
+soap_prefix=/opt/qa/soapvalidator/data/soapvalidator
+# The complete soap test path will be "${soap_prefix}/${soap}"
+# Per Dawood: By default run everything
+soap=""
+genesis_case_prefix=data
+# The complete genesis testcase path will be "${genesis_case_prefix}/${genesis_case}"
+genesis_case=
+# The complete genesis plan path will by "${genesis_plan_prefix}/${genesis_plan}"
+genesis_plan_prefix=conf/genesis
+genesis_plan=HA/UATmultinodefoss.txt
+shutdown=yes
+setup_complete_flag=/opt/qa/setup-complete
+
+function usage {
+    echo "$0 [ARGS]"
+    echo "where ARGS may be any of the following:"
+    echo "--run-soap yes|no         (default=no) run soap-harness tests"
+    echo "--run-genesis yes|no      (default=no) run genesis tests"
+    echo "--soap <test>             If specified, run this test instead of the default, which is to run EVERYTHING."
+    echo "                          This is a change in the previous behavior, which was to run 'SanityTest/'"
+    echo "                          The value specified will be prefixed by this:"
+    echo "                          ${soap_prefix}/"
+    echo "--genesis-case <testcase> If specified, run this testcase instead of the default plan."
+    echo "                          --genesis-case supercedes --genesis-plan"
+    echo "                          The value specified will be prefixed by this:"
+    echo "                          ${genesis_case_prefix}/"
+    echo "--genesis-plan <plan>     If specified, run this plan instead of the default plan (${genesis_plan})"
+    echo "                          The value specified will be prefixed by this:"
+    echo "                          ${genesis_plan_prefix}/"
+    echo "--shutdown yes|no         (default=yes) If yes, allow this script to end when it has finished working."
+    echo "                          Since this script is the normal entrypoint, if you want it to just sleep"
+    echo '                          instead of exiting, pass in a value of "no" for this and your test container'
+    echo "                          will stay running so you can log in and run more tests."
+    echo "-h|--help                 Print help message and exit"
+
+    exit 1
+}
+
+#
+# Parse args
+#
+
+while [ $# -ne 0 ]; do
+    case "$1" in
+      --run-soap)
+        shift
+        run_soap=$1
+        ;;
+      --run-genesis)
+        shift
+        run_genesis=$1
+        ;;
+      --soap)
+        shift
+        soap=$1
+        ;;
+      --genesis-case)
+        shift
+        genesis_case=$1
+        ;;
+      --genesis-plan)
+        shift
+        genesis_plan=$1
+        ;;
+      --shutdown)
+        shift
+        shutdown=$1
+        ;;
+      *)
+        usage
+        ;;
+    esac
+    shift
+done
+
+echo "Parsed arguments:"
+echo "--run-soap='${run_soap}'"
+echo "--run-genesis='${run_genesis}'"
+echo "--soap='${soap}'"
+echo "--genesis-case='${genesis_case}'"
+echo "--genesis-plan='${genesis_plan}'"
+echo "--shutdown='${shutdown}'"
+
+function setup {
+    add_host_entry "${HOSTNAME}" 127.0.0.1
+    # Update the config files for soap-harness and genesis
+    echo "updating soap-harness config"
+    sed \
+      -e "s/ZIMBRA_HOST_NAME/${proxy_fqdn}/" \
+      -e "s/ZIMBRA_DEFAULT_DOMAIN/${ZIMBRA_DEFAULT_DOMAIN}/" \
+      -e "s/MAILBOX_SERVICE_NAME/${mailbox_fqdn}/" \
+      -e "s/LDAP_SERVICE_NAME/${ldap_fqdn}/" \
+      -e "s/TEST_SERVICE_NAME/${HOSTNAME}/" \
+      -e "s/ADMIN_PORT/${ADMIN_PORT}/" \
+      -e "s/HTTPS_PORT/${HTTPS_PORT}/" \
+      -e "s/SOAPSERVICE_PORT/${SOAPSERVICE_PORT}/" \
+      -e "s/ADMIN_PW/${ADMIN_PW}/" > /opt/qa/soapvalidator/conf/global.properties < /opt/qa/soapvalidator/conf/global.properties.in
+    sed \
+      -e "s/ZIMBRA_HOST_NAME/${proxy_fqdn}/" \
+      -e "s/ZIMBRA_DEFAULT_DOMAIN/${ZIMBRA_DEFAULT_DOMAIN}/" \
+      -e "s/HOSTNAME/${HOSTNAME}/" > /opt/qa/genesis/conf/genesis.conf < /opt/qa/genesis/conf/genesis.conf.template
+
+    # Create the framework-specific subdirectories of /opt/qq/logs
+    mkdir -p /opt/qa/logs/genesis
+    mkdir -p /opt/qa/logs/soap-harness
+    # Fire up STAF
+    echo "starting STAF. output to /opt/qa/logs/staf.log."
+    # NOTE: will see this error if you are watching the logs:
+    #       STAFProcess::processMonitorThread: Error opening /dev/tty, errno: 6
+    # That is OK. See: http://staf.sourceforge.net/current2x/STAFFAQ.htm#d0e332
+    /usr/local/staf/startSTAFProc.sh >/opt/qa/logs/staf.log 2>&1 &
+    sleep ${SLEEP_SECS}
+    echo "adding STAF services"
+    STAF local service add service SOAP LIBRARY JSTAF EXECUTE /opt/qa/soapvalidator/bin/zimbrastaf.jar
+    STAF local service add service LOG LIBRARY STAFLog
+    STAF local service add service INJECT LIBRARY JSTAF EXECUTE /opt/qa/soapvalidator/bin/zimbrainject.jar
+
+    # Wait for the mailbox service to finish configuration
+    # We do this by waiting for STAF to come up, as that is the last service
+    # that is brought up.
+    wait_for_staf "${mailbox_fqdn}"
+    touch ${setup_complete_flag}
+}
+
+export PATH=/usr/local/staf/bin:$PATH
+
+if [ ! -f ${setup_complete_flag} ]; then
+    setup
+else
+    echo "Skipping setup as it has already been run"
+fi
+
+if [ "${run_soap}" = "yes" ]; then
+    soap_test_path="${soap_prefix}/${soap}"
+    echo "Running soap test ${soap_test_path}..."
+    STAF LOCAL soap EXECUTE "${proxy_fqdn}" ZIMBRAQAROOT /opt/qa/soapvalidator/ DIRECTORY "${soap_test_path}" LOG /opt/qa/logs/soap-harness  SUITE SMOKE
+fi
+
+if [ "${run_genesis}" = "yes" ]; then
+    if [ "${genesis_case}x" = "x" ]; then
+        # No case, so running the plan
+        plan_path="${genesis_plan_prefix}/${genesis_plan}"
+        echo "Running genesis plan ${plan_path}..."
+        cd /opt/qa/genesis && \
+        source /etc/profile.d/rvm.sh && \
+        ruby runtest.rb --plan "${plan_path}" --log /opt/qa/logs/genesis
+    else
+        # testcase overrides plan
+        case_path="${genesis_case_prefix}/${genesis_case}"
+        echo "Running genesis case ${case_path}..."
+        cd /opt/qa/genesis && \
+        source /etc/profile.d/rvm.sh && \
+        ruby runtest.rb --testcase "${case_path}" --log /opt/qa/logs/genesis
+    fi
+fi
+
+if [ "${shutdown}" = "yes" ]; then
+    echo "All tasks completed and shutdown is 'yes', so test container will now exit."
+else
+    echo "All tasks completed and shutdown is 'no', so test container will not exit."
+    /bin/sleep infinity
+fi
