@@ -5,6 +5,9 @@ SOAPSERVICE_PORT=8443
 # EX: zmc.com
 ZIMBRA_DEFAULT_DOMAIN=<target-zimbra-default-domain>
 # EX: proxy (not fqdn)
+# If you write the hostname like this: <hostname>:<ip-address>, the
+# startup code will and an entry in /etc/hosts like this: <ip-address> <hostname>.<zimbra-default-domain>
+# This can be hand if you don't have DNS setup for all of the API endpoints.
 PROXY_HOSTNAME=<proxy-hostname>
 # EX: ldap (not fqdn) - for single node Zimbra use same value as PROXY_HOSTNAME
 LDAP_HOSTNAME=<ldap-hostname>

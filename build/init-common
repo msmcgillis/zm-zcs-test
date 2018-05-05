@@ -36,10 +36,10 @@ function add_host_entry {
 
     grep -q "${host_ip}.*${host_fqdn}" /etc/hosts
     if [ $? != 0 ]; then
-        echo "Adding mapping for ${host_fqdn} to ${host_ip} in /etc/hosts"
+        >&2 echo "Adding mapping for ${host_fqdn} to ${host_ip} in /etc/hosts"
         echo -e "${host_ip}\t${host_fqdn}" >> /etc/hosts
     else
-        echo "An entry for ${host_fqdn} is already present in /etc/hosts"
+        >&2 echo "An entry for ${host_fqdn} is already present in /etc/hosts"
     fi
 }
 
@@ -82,6 +82,27 @@ function post_zmsetup_configuration {
     sudo -i -u zimbra zmupdateauthkeys
     echo "Restarting zimbra"
     sudo -i -u zimbra zmcontrol restart
+}
+
+# Parameters
+# - hostname_info, can be one of the following:
+#   - just a single value, in which case we combine it with the domainname and 
+#     return the result
+#   - <hostname>:<ip-address>, in which case we split these up, construct the 
+#     FQDN, and add an entry to /etc/hosts
+# - domainname
+# Returns: The FQDN
+function process_host_config {
+    hostname_info="${1}"
+    domainname="${2}"
+    IFS=: read -a host_fields <<<"$hostname_info"
+    hostname="${host_fields[0]}"
+    ip_address="${host_fields[1]}"
+    fqdn="${hostname}.${domainname}"
+    if [[ ! ( -z "${ip_address}" ) ]]; then
+        add_host_entry "${fqdn}" "${ip_address}"
+    fi
+    echo "${fqdn}"
 }
 
 # Updates /etc/hosts, if necessary, by adding an additional hosthame mapping

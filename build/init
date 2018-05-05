@@ -14,9 +14,9 @@ source "${DN}/init-common"
 [ -z "$ZIMBRA_DEFAULT_DOMAIN" ] && echo "ZIMBRA_DEFAULT_DOMAIN not defined" && exit 1
 
 
-ldap_fqdn="${LDAP_HOSTNAME}.${ZIMBRA_DEFAULT_DOMAIN}"
-mailbox_fqdn="${MAILBOX_HOSTNAME}.${ZIMBRA_DEFAULT_DOMAIN}"
-proxy_fqdn="${PROXY_HOSTNAME}.${ZIMBRA_DEFAULT_DOMAIN}"
+ldap_fqdn=$(process_host_config "${LDAP_HOSTNAME}" "${ZIMBRA_DEFAULT_DOMAIN}")
+mailbox_fqdn=$(process_host_config "${MAILBOX_HOSTNAME}" "${ZIMBRA_DEFAULT_DOMAIN}")
+proxy_fqdn=$(process_host_config "${PROXY_HOSTNAME}" "${ZIMBRA_DEFAULT_DOMAIN}")
 
 run_soap=no
 run_genesis=no
