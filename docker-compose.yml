@@ -5,7 +5,7 @@ services:
     env_file: .env
     image: ${IMG}
     container_name: test
-    hostname: test
+    hostname: localhost
     build:
       context: '.'
       dockerfile: 'build/Dockerfile'

@@ -36,10 +36,10 @@ function add_host_entry {
 
     grep -q "${host_ip}.*${host_fqdn}" /etc/hosts
     if [ $? != 0 ]; then
-        >&2 echo "Adding mapping for ${host_fqdn} to ${host_ip} in /etc/hosts"
+        echo "Adding mapping for ${host_fqdn} to ${host_ip} in /etc/hosts"
         echo -e "${host_ip}\t${host_fqdn}" >> /etc/hosts
     else
-        >&2 echo "An entry for ${host_fqdn} is already present in /etc/hosts"
+        echo "An entry for ${host_fqdn} is already present in /etc/hosts"
     fi
 }
 
@@ -86,9 +86,9 @@ function post_zmsetup_configuration {
 
 # Parameters
 # - hostname_info, can be one of the following:
-#   - just a single value, in which case we combine it with the domainname and 
+#   - just a single value, in which case we combine it with the domainname and
 #     return the result
-#   - <hostname>:<ip-address>, in which case we split these up, construct the 
+#   - <hostname>:<ip-address>, in which case we split these up, construct the
 #     FQDN, and add an entry to /etc/hosts
 # - domainname
 # Returns: The FQDN
@@ -98,7 +98,11 @@ function process_host_config {
     IFS=: read -a host_fields <<<"$hostname_info"
     hostname="${host_fields[0]}"
     ip_address="${host_fields[1]}"
-    fqdn="${hostname}.${domainname}"
+    if [[ ${domainname} == ${hostname}* ]]; then
+      fqdn="${domainname}"
+    else
+      fqdn="${hostname}.${domainname}"
+    fi
     if [[ ! ( -z "${ip_address}" ) ]]; then
         add_host_entry "${fqdn}" "${ip_address}"
     fi
