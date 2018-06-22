@@ -10,7 +10,7 @@ source "${DN}/init-common"
 [ -z "$MAILBOX_HOSTNAME" ] && echo "MAILBOX_HOSTNAME not defined}" && exit 1
 [ -z "$PROXY_HOSTNAME" ] && echo "PROXY_HOSTNAME not defined}" && exit 1
 [ -z "$SOAPSERVICE_PORT" ] && echo "SOAPSERVICE_PORT not defined" && exit 1
-[ -z "$ZIMBRA_DEFAULT_DOMAIN" ] && echo "ZIMBRA_DEFAULT_DOMAIN not defined" &&
+[ -z "$ZIMBRA_DEFAULT_DOMAIN" ] && echo "ZIMBRA_DEFAULT_DOMAIN not defined" && exit 1
 
 # This is the default path that the tests results will be uploaded to in S3.
 # The final component of the pathname will be auto-generated with a date/time stamp
@@ -250,7 +250,6 @@ fi
 if [ "${run_performance}" = "yes" ]; then
        echo "Running performance test ${performance_target}..."
         cd /opt/qa/zm-load-testing/ && \
-        ant clean && \
 	ant "${performance_target}"
     any_tests_run=yes
 fi

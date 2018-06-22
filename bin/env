@@ -1,0 +1,98 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use Getopt::Long;
+use Pod::Usage;
+use Term::ReadLine;
+
+use lib ('./lib');
+use ZCS::API;
+
+=head1 NAME
+
+config - connect to zimbra soap using admin account to generate zimbra config
+
+=head1 SYNOPSIS
+
+  config -admin -password -url
+
+=head1 OPTIONS
+
+=head1 DESCRIPTION
+
+=cut
+
+my %o;
+GetOptions(\%o,'admin=s','password=s','url=s') or pod2usage({-exitval=>1});
+
+use Data::Dumper;
+my $term=new Term::ReadLine "env";
+unless (exists($o{admin}) && defined($o{admin})) {
+  $o{admin}=$term->readline("Zimbra Admin User:","admin");
+}
+unless (exists($o{password}) && defined($o{password})) {
+  $term->Attribs->{redisplay_function}=$term->Attribs->{shadow_redisplay};
+  $o{password}=$term->readline("Zimbra Admin Password:");
+  $term->Attribs->{redisplay_function}=undef;
+}
+unless (exists($o{url}) && defined($o{url})) {
+  $o{url}=$term->readline("Zimbra Admin Soap URL",
+	                  "https://server:7071/service/admin/soap");
+}
+
+my $zcs=ZCS::API->new(conf => {
+    SOAPURI  => $o{url},
+    SOAPUser => $o{admin},
+    SOAPPass => $o{password}
+});
+unless ($zcs) {
+  pod2usage( -exitval => 1, -msg => ZCS::API->error );
+}
+
+my $config = getconfig();
+genperfconfig($config);
+
+sub getconfig {
+  my $result={};
+  if ($o{url} =~ /([^:]+):\/\/([^:\/]+)/) {
+    $result->{server}=$2;
+    $result->{user}=$o{admin};
+    $result->{password}=$o{password};
+    $result->{httpprotocol}=$1;
+    $result->{httpport}=$1 eq "https"?443:80;
+  } else {
+    die $o{url}." is not a valid url";
+  }
+  my $tmp=$zcs->getallconfig();
+  foreach my $a (@{$tmp->{Body}{GetAllConfigResponse}{a}}) {
+    $result->{$a->{n}}=$a->{_content};
+  }
+  return $result;
+}
+
+sub genperfconfig {
+  my $config = shift;
+  print "HTTP.server=".$config->{server}."\n";
+  print "HTTP.domain=".$config->{zimbraDefaultDomainName}."\n";
+  print "HTTP.protocol=".$config->{httpprotocol}."\n";
+  print "HTTP.port=".$config->{httpport}."\n";
+  print "HTTP.admin.user=".$config->{user}."\n";
+  print "HTTP.admin.pass=".$config->{password}."\n";
+  print "HTTP.admin.port=".$config->{zimbraAdminPort}."\n";
+  print "SMTP.server=".$config->{server}."\n";
+  print "SMTP.domain=".$config->{zimbraDefaultDomainName}."\n";
+  print "SMTP.port=".$config->{zimbraSmtpPort}."\n";
+  print "LMTP.server=".$config->{server}."\n";
+  print "LMTP.domain=".$config->{zimbraDefaultDomainName}."\n";
+  print "LMTP.port=".$config->{zimbraLmtpBindPort}."\n";
+  print "IMAP.server=".$config->{server}."\n";
+  print "IMAP.domain=".$config->{zimbraDefaultDomainName}."\n";
+  print "IMAP.port=".$config->{zimbraImapProxyBindPort}."\n";
+  print "POP.server=".$config->{server}."\n";
+  print "POP.domain=".$config->{zimbraDefaultDomainName}."\n";
+  print "POP.port=".$config->{zimbraPop3ProxyBindPort}."\n";
+  print "EMAIL.COUNT=1\n";
+  print "USER.COUNT=1\n";
+}

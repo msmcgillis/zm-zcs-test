@@ -1,0 +1,324 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use File::Temp;
+use Getopt::Long;
+use IO::File;
+use JSON; 
+use Pod::Usage;
+use Sys::Hostname;
+
+=head1 NAME
+
+users - create user accounts in zimbra
+
+=head1 SYNOPSIS
+
+  users -config <config> -action csv|create|delete -number <number>
+        -exec -start <number>
+
+=head1 OPTIONS
+
+=head2 -action
+
+What action to perform related to users.
+
+=over
+
+=item csv
+
+Create a csv file of users for use with jmeter.
+
+=item create
+
+Create accounts in zimbra.
+
+=item delete
+
+Delete accounts in zimbra.
+
+=back
+
+=head2 -config
+
+Config file for environment.
+
+=head2 -exec
+
+Try to execute the create or delete rather than just output batch commands.
+
+Requires user running this script have access to zmprov.
+
+=head2 -number
+
+Number of accounts to generate.
+
+=head2 -start
+
+Number to use for first accounts. Defaults to 1
+
+=head1 DESCRIPTION
+
+Simple script for adding and deleting test users from zimbra.
+
+This can be used without a config file or any special requirements to generate output of users files that can be process with zmprov.
+
+Without any config settings the default behavior is to creae accounts like:
+
+  user#@<hostname> userpass
+
+So if you are on machine with a hostname of zimbra.foobar.com and only create once user then the user that would be created would be: test1@zimbra.foobar.com with a password "userpass".
+
+All the above are controlled from the config file values as follows:
+
+  <prefix>#@<domain> <password>
+
+If you have multiple mailstores and want a set of accounts distributed accross them or only want to use a specific one you can use the config file value mailsotres to add all the names of the mailstores you want to use as an array.
+
+=head1 CONFIGURATION
+
+All the following values can be set in config file.
+
+=over
+
+=item prefix
+
+The string to use for the user name followed by a number.
+
+=item password
+
+The password to use for all test users.
+
+=item domain
+
+The domain to create all the users in.
+
+=item mailhosts
+
+This is an array of all the mailstores you want to distribute the users across.
+
+=back
+
+  {
+    "prefix"    : "user",
+    "password"  : "userpass",
+    "domain"    : "my.domain.com",
+    "mailhosts" : ["mh1.my.domain.com","mh2.mydomain.com",...]
+  }
+
+=cut
+
+my %o;
+if (!GetOptions(\%o,'config=s','action=s','number=i','start=i','exec')) {
+  pod2usage({-exitval => 1});
+}
+unless ($o{number}) {
+  pod2usage({-exitval => 1, -message=> "must specify number"});
+}
+
+$o{start}=1 unless ($o{start});
+
+my $config = {
+  prefix=>"user",
+  password=>"test123",
+  domain=>hostname
+};
+if ($o{config}||$ENV{USERCONFIG}) {
+  %{$config} = (%{$config},%{json($o{config}||$ENV{USERCONFIG})});
+}
+
+
+if (exists($o{action})) {
+  if ($o{action} eq 'csv') {
+    csv();
+  } elsif ($o{action} eq 'create') {
+    ucreate();
+  } elsif ($o{action} eq 'delete') {
+    udelete();
+  } elsif ($o{action} eq 'perf') {
+    perf();
+  } else {
+    pod2usage({-exitval => 1, -verbose => 0,
+               -message => $o{action}." action is not supported"});
+  }
+} else {
+  pod2usage({-exitval => 1, -verbose => 0, -message=> "must specify action"});
+}
+
+=head1 METHODS
+
+=head2 csv
+
+generate csv file of user,password
+
+=cut
+
+sub csv {
+  for (my $i=$o{start}; $i<=($o{start}-1)+$o{number}; $i++) {
+    # general format of file
+    # <user>,<password>
+    # default example
+    # test1,userpass
+    print $config->{prefix}.$i.",".$config->{password}."\n";
+  }
+}
+
+=head2 perf
+
+generate perf file of user,password,user
+
+=cut
+
+sub perf {
+  for (my $i=$o{start}; $i<=($o{start}-1)+$o{number}; $i++) {
+    # general format of file
+    # <user>,<password>,<user>
+    # default example
+    # test1,userpass
+    print $config->{prefix}.$i.",".$config->{password}.",".
+          $config->{prefix}.($o{number}-($i-1))."\n";
+  }
+}
+
+=head2 ucreate
+
+generate the user create output.
+
+=cut
+
+sub ucreate {
+  my $dest=*STDOUT;
+  $dest=File::Temp->new if ($o{exec});
+  # general format of file
+  # ca <user>@<domain> <pass> zimbraMailHost <mailhost>
+  # exit
+  #
+  for (my $i=1; $i<=$o{number}; $i++) {
+    print $dest "ca ".$config->{prefix}.$i.'@'.$config->{domain};
+    print $dest " ".$config->{password};
+    print $dest " zimbraMailHost ".
+          $config->{mailhosts}[($i-1)%scalar(@{$config->{mailhosts}})]
+                 if ($config->{mailhosts});
+    print $dest "\n";
+  }
+  print $dest "exit\n";
+  if ($o{exec}) {
+    $dest->close;
+    if (zmprov($dest->filename)) {
+      print "accounts created\n";
+    }
+  }
+}
+
+=head2 udelete
+
+generate the user delete output.
+
+=cut
+
+sub udelete {
+  my $dest=*STDOUT;
+  $dest=File::Temp->new if ($o{exec});
+  # general format of file
+  # da <user>@<domain>
+  # exit
+  #
+  for (my $i=1; $i<=$o{number}; $i++) {
+    print $dest "da ".$config->{prefix}.$i.'@'.$config->{domain}."\n";
+  }
+  print $dest "exit\n";
+  if ($o{exec}) {
+    $dest->close;
+    if (zmprov($dest->filename)) {
+      print "accounts deleted\n";
+    }
+  }
+}
+
+=head2 zmprov(file)
+
+Run zmprov using the specified file as its input.
+
+=cut
+
+sub zmprov {
+  my $file=shift;
+  system("zmprov <".$file);
+  if ($? == -1) {
+    print STDERR "failed to execute: $!\n";
+    return;
+  } elsif ($? & 127) {
+    printf STDERR "child died with signal %d, %s coredump\n",
+           ($? & 127),  ($? & 128) ? 'with' : 'without';
+    return;
+  } elsif ($?) {
+    printf STDERR "child exited with value %d\n", $? >> 8;
+    return;
+  }
+  return 1;
+}
+
+=head2 json(file)
+
+Read json file and return its contents as a perl hash.
+
+=cut
+
+sub json {
+  my $file=shift;
+  my $text="";
+  {
+    local $/ = undef;
+    my $fh = IO::File->new($file,"r");
+    unless ($fh) {
+      print STDERR "failed to open $file: ".$!."\n";
+      exit;
+    }
+    $text=<$fh>;
+    $fh->close;
+  }
+  my $j=JSON->new;
+  return $j->decode($text);
+}
+
+=head1 EXAMPLES
+
+=over
+
+=item output zmprov script to generate 10 users.
+
+  $ users -a create -n 10 
+
+=item output zmprov script to generate 10 users then execute.
+
+  $ users -a create -n 10 >/tmp/create10
+  $ zmprov </tmp/create10
+
+=item directly create 10 users in zimbra (assumes script can run zmprov)
+
+  $ users -a create -n 10 -exec
+
+=item directly delete 10 users in zimbra (assumes script can run zmprov)
+
+  $ users -a delete -n 10 -exec
+
+=item create jmeter csv list of 10 user accounts
+
+  $ users -a csv -n 10
+
+=item create config file that generates accounts of the form test#@foobar.com using a password "foobar". Distribute the accounts across three mailstores zms1.foobar.com, zms2.foobar.com, and zms3.foobar.com then output zmprov script to generate 500 of these test accounts.
+
+  $ vi test.json
+  {
+    "prefix" : "test",
+    "password" : "foobar",
+    "domain" : "foobar.com",
+    "mailhosts" : [ "zms1.foobar.com","zms2.foobar.com","zms3.foobar.com"]
+  }
+  $ users -c test.json -a create -n 500
+
+=back
+
+=cut

@@ -39,8 +39,15 @@ WORKDIR /tmp
 # Caching the STAF binary in S3 due to intermittent reliability issues with sourceforge
 # Original URL: http://downloads.sourceforge.net/project/staf/staf/V3.4.26/STAF3426-setup-linux-amd64-NoJVM.bin
 RUN curl -k -L -O https://docker.zimbra.com.s3.amazonaws.com/staf/STAF3426-setup-linux-amd64-NoJVM.bin
-RUN wget https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-3.0.zip
-RUN git clone https://github.com/Zimbra/zm-load-testing /opt/qa/zm-load-testing
+RUN wget https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-3.0.zip; \
+    unzip /tmp/apache-jmeter-3.0.zip -d /opt/
+RUN git clone https://github.com/Zimbra/zm-load-testing /opt/qa/zm-load-testing; \
+    cd /opt/qa/zm-load-testing; ant jar; \
+    rm -rf /opt/qa/zm-load-testing/logs; \
+    ln -s /opt/qa/logs /opt/qa/zm-load-testing/logs; \
+    ln -s /opt/qa/logs /opt/qa/zm-load-testing/logs; \
+    rm /opt/qa/zm-load-testing/config/env.prop; \
+    rm /opt/qa/zm-load-testing/config/users.csv
 RUN git clone https://github.com/Zimbra/zimbra-package-stub.git -b master
 RUN git clone https://github.com/Zimbra/zm-zcs.git -b develop
 RUN git clone https://github.com/Zimbra/zm-mailbox.git -b develop
@@ -78,8 +85,7 @@ RUN mkdir -p /opt/qa && \
     /bin/bash -c 'gem install soap4r log4r net-ldap json httpclient parseconfig' && \
     apt-get clean && \
     curl -o /root/s3curl.pl  https://raw.githubusercontent.com/rtdp/s3curl/master/s3curl.pl && \
-    chmod +x /root/s3curl.pl && \
-    unzip /tmp/apache-jmeter-3.0.zip -d /opt/
+    chmod +x /root/s3curl.pl
 
 # Cleanup /tmp
 WORKDIR /tmp
