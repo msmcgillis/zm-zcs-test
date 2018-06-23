@@ -156,10 +156,12 @@ That would run the identified test then exit. Unfortunately services don't suppo
 
 If the above did work then inside the docker compose we could have multiple services to performe larger loads. So you may have a smtp, imap, pop, zsoap, ... service defined in the compose file and each of those services would do an appropriate:
 
+```
 /zimbra/zm-test -t smtp -u 200 -i -1
 /zimbra/zm-test -t imap -u 500 -i -1
 /zimbra/zm-test -t pop -u 300 -i -1
 /zimbra/zm-test -t zsoap -u 200 -i -1
+```
 
 Note the above is using the zm-test ability to adjust the default thread and loop counts. In jmeter the -user specifies the thread count and -iteration specifiec the loopcount for the thread. Using -1 for the loop count means the test will loop forever. So if you had 4 containers all running with the above you would be simulating 1200 concurrent users 200 smtp 500 imap 300 pop and 200 zsoap.
 
