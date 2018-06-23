@@ -2,7 +2,6 @@ version: '3.4'
 
 services:
   perf:
-    env_file: .env
     image: ${IMG}
     container_name: perf
     hostname: localhost
@@ -11,22 +10,7 @@ services:
       dockerfile: 'build/Dockerfile'
     volumes:
       - ./logs:/opt/qa/logs
-    configs:
-      - source: users.csv
-        target: /opt/qa/zm-load-testing/config/users.csv
-    secrets:
-      - source: env.prop
-        target: /opt/qa/zm-load-testing/config/env.prop
     entrypoint:
-      - /zimbra/init
-      - --shutdown
-      - "no"
+      - /zimbra/zm-test
+      - --service
     network_mode: "host"
-
-secrets:
-    env.prop:
-        file: ./.secrets/env.prop
-
-configs:
-    users.csv:
-        file: ./.config/users.csv

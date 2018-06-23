@@ -12,13 +12,23 @@ use ZCS::API;
 
 =head1 NAME
 
-config - connect to zimbra soap using admin account to generate zimbra config
+env - connect to zimbra soap using admin account to generate zimbra zm-load-testing env property file
 
 =head1 SYNOPSIS
 
-  config -admin -password -url
+  env -admin <admin> -password <password> -url <url>
 
 =head1 OPTIONS
+
+=over
+
+=item -admin <admin>
+
+=item -password <password>
+
+=item -url <url>
+
+=back
 
 =head1 DESCRIPTION
 

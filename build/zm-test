@@ -1,0 +1,299 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use Getopt::Long;
+use IO::Dir;
+use IO::File;
+use Pod::Usage;
+use POSIX;
+
+my $zmlt_home = "/opt/qa/zm-load-testing";
+my $args = "-n";
+my $defaultenv = "etc/env.prop";
+my $jmeter = "/opt/apache-jmeter-3.0/bin/jmeter";
+
+=head1 NAME
+
+zm-test - script to execute zimbra performance tests
+
+=head1 SYNOPSIS
+
+  zm-test -test <test> [-env <env>] [-load <load>] [-profile <profile>] 
+          [-users <number>] [-iterations <number>] [-service] [-help] [-man]
+
+=head1 OPTIONS
+
+=over
+
+=item -test <test>
+Specify desired test to run.
+
+=item -env <env>
+Specify desired environment property file to use.
+
+=item -load <load>
+Specify desired load property file to use.
+
+=item -profile <profile>
+Specify desire profile property file to use.
+
+=item -users <number>
+Specify the number of thread to use in jmeter.
+
+=item -iterations <number>
+Specify the number of iterations each thread performs the test profile.
+
+=item -service
+Can be used in container to keep it running.
+
+=item -help
+Output short help information.
+
+=item -man
+Output man page.
+
+=back
+
+=head1 DESCRIPTION
+
+Wrapper for executing zm-load-testing tests.
+
+=head1 EXAMPLE
+
+=over
+
+=item list availabe tests
+
+zm-test
+
+=item get usage information
+
+zm-test -h
+
+=item run basic lmtp test
+
+zm-test -t lmtp
+
+=item run basic lmtp test iterate the profile twice
+
+zm-test -t lmtp -i 2
+
+=item run basic lmtp test with 2 thread each iterate the profile twice
+
+zm-test -t lmtp -u 2 -i 2
+
+=back
+
+=cut
+
+# process command line arguments
+my %o;
+GetOptions(\%o,'-test=s','-env=s','-load=s','-profile=s','-users=i',
+           '-iterations=i','-service','-help','-man')
+        or pod2usage({-exitval  => 1,
+                      -verbose  => 99,
+                      -sections =>"SYNOPSIS"});
+if ($o{service}) {
+  sleep;
+}
+if ($o{help}) {
+  pod2usage({-exitval=>0});
+}
+if ($o{man}) {
+  pod2usage({-exitval=>0,-verbose=>99});
+}
+
+# change working directory to zm-load-testing 
+chdir($zmlt_home);
+
+# based on arguments build information required for executing jmeter
+my ($name,$test) = findtest($o{test});
+my $env = findenv($o{env});
+my $load = defaultload($name,$o{load});
+my $profile = defaultprofile($name,$o{profile});
+my $date=strftime("%Y%m%d%H%M%S",localtime);
+mkdir("/opt/qa/logs/$date");
+$args.=" -DACCOUNTS.csv=config/users.csv";
+$args.=" -DREQUEST.log=/opt/qa/logs/$date/$name-requests.log";
+$args.=" -Duser.classpath=src/build/jar/zjmeter.jar";
+$args.=" -j /opt/qa/logs/$date/$name-jmeter.log";
+$load=setproperty($load,"users");
+
+# execute jmeter test
+test($test,$env,$load,$profile);
+
+=head1 METHODS
+
+=head2 test
+
+Call jmeter with arguments required to run requested test.
+
+=cut
+
+sub test {
+  my $test    = shift;
+  my $env     = shift;
+  my $load    = shift;
+  my $profile = shift;
+  my $cmd=$jmeter;
+  $cmd.=" -q ".$env;
+  $cmd.=" -q ".$load;
+  $cmd.=" -q ".$profile if ($profile);
+  $cmd.=" -t ".$test;
+  $cmd.=" ".$args;
+  print($cmd."\n");
+  system($cmd);
+}
+
+=head2 findtest
+
+Locate requests test for execution.
+
+=cut
+
+sub findtest {
+  my $test = shift;
+  my $name;
+  my $result;
+  if (! defined $test) {
+    print "Must specify test to run. See zm-test -h for usage\n\nThis is a list of available tests:\n";
+    list();
+    exit;
+  } elsif (-f $test) {
+    $result=$test;
+    $name=$test;
+    $name=~s/.*\///;
+    $name=~s/\.jmx//;
+  } elsif (-f "tests/generic/".$test."/".$test.".jmx") {
+    $name=$test;
+    $result="tests/generic/".$test."/".$test.".jmx";
+  } elsif (-f "tests/fixed/".$test."/".$test.".jmx") {
+    $name=$test;
+    $result="tests/fixed/".$test."/".$test.".jmx";
+  } else {
+    pod2usage({-exitval=>1,-message=>$test." is not a valid test name"});
+  }
+  return $name,$result;
+}
+
+=head2 findenv
+
+Look for a valid env file in expected locations.
+
+=cut
+
+sub findenv {
+  my $env = shift;
+  my $result;
+  if (defined $env && -f $env) {
+    $result=$env;
+  } elsif (-f $defaultenv) {
+    $result=$defaultenv;
+  } elsif (-f "config/env.prop") {
+    $result="config/env.prop";
+  }
+  return $result;
+}
+
+=head2 defaultload
+
+Get the tests default load file if not specified.
+
+=cut
+
+sub defaultload {
+  my $test = shift;
+  my $load = shift;
+  my $result;
+  if (defined $load && -f $load) {
+    $result=$load;
+  } elsif (-f "tests/generic/".$test."/load.prop") {
+    $result="tests/generic/".$test."/load.prop";
+  } elsif (-f "tests/fixed/".$test."/load.prop") {
+    $result="tests/fixed/".$test."/load.prop";
+  }
+  return $result;
+}
+
+=head2 defaultprofile
+
+Get the tests default profile if not specified.
+
+=cut
+
+sub defaultprofile {
+  my $test = shift;
+  my $profile = shift;
+  my $result;
+  if (defined $profile && -f $profile) {
+    $result=$profile;
+  } elsif (-f "tests/generic/".$test."/profiles/basic.prop") {
+    $result="tests/generic/".$test."/profiles/basic.prop";
+  }
+  return $result;
+}
+
+=head2 setproperty
+
+Support adjusting the load users and loopcount based on the passed users or iterations parameter. If changes are required a new file /tmp/load.prop is created with the modification and will be used for the test.
+
+=cut
+
+sub setproperty {
+  my $load = shift;
+  my $name = shift; 
+  if ($o{users} || $o{iterations}) {
+    my $of = IO::File->new("/tmp/load.prop","w");
+    my $if = IO::File->new($load,"r");
+    while (<$if>) {
+      if (/(.*users)/) {
+        if (exists($o{users})) {
+          print $of $1."=".$o{users}."\n";
+        } else {
+          print $of $_;
+        }
+      } elsif (/(.*loopcount)/) {
+        if (exists($o{iterations})) {
+          print $of $1."=".$o{iterations}."\n";
+        } else {
+          print $of $_;
+        }
+      } else {
+        print $of $_;
+      }
+    }
+    return "/tmp/load.prop";
+  }
+  return $load;
+}
+
+=head2 list
+
+Generate list of availble tests.
+
+=cut
+
+sub list {
+  listjmx($zmlt_home."/tests");
+}
+
+=head2 listjmx
+
+Scan through the tests directory of zm-load-test and print out the jmx files that can be used for tests.
+
+=cut
+
+sub listjmx {
+  my $dir = shift;
+  my $id = IO::Dir->new($dir);
+  while (my $item=$id->read) {
+    next if ($item =~ /^\.|^\.\./);
+    if (-d $dir."/".$item) {
+      listjmx($dir."/".$item);
+    } elsif ($item =~ /(.*)\.jmx/) {
+      print $1."\n";
+    }
+  }
+}

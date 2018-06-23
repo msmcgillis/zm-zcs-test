@@ -1,5 +1,6 @@
 all: build
 
+USERARGS    ?= -a perf -n 1
 ADMIN       ?= admin
 PASS        ?= test123
 URL         ?= https://zmc-proxy:7071/service/admin/soap
@@ -10,11 +11,7 @@ IMG         = "${ORG}/zm-zcs-test:${TAG}"
 STACK_NAME  ?= zm-test
 
 
-build: .secrets/env.prop .config/users.csv .env .image.tag logs
-
-force-build: .env
-	rm .image.tag
-	make build
+build: .secrets/env.prop .config/users.csv .image.tag logs
 
 .image.tag:
 	IMG=${IMG} \
@@ -22,11 +19,14 @@ force-build: .env
 	@echo "${IMG}" > .image.tag
 
 clean: down
-	rm -r .env .image.tag .secrets .config
+	rm -f .image.tag
+	rm -rf .secrets
+	rm -rf .config
 
 down:
 	IMG="${IMG}" \
-        docker stack rm '${STACK_NAME}'
+        docker-compose down
+#       docker stack rm '${STACK_NAME}'
 	rm -f .up.lock
 
 logs: 
@@ -36,22 +36,20 @@ up: .up.lock
 
 .up.lock:
 	IMG="${IMG}" \
-	docker stack deploy -c docker-compose.yml '${STACK_NAME}'
+	docker-compose up -d
+#	docker stack deploy -c docker-compose.yml '${STACK_NAME}'
 	touch .up.lock
 
-.env:
-	cat DOT-env > .env
-
 .secrets/.init:
-	mkdir .secrets
+	mkdir -p .secrets
 	touch "$@"
 
 .secrets/env.prop: .secrets/.init
 	bin/env -a ${ADMIN} -p ${PASS} -u ${URL} >$@
 
 .config/.init:
-	mkdir .config
+	mkdir -p .config
 	touch "$@"
 
 .config/users.csv: .config/.init
-	bin/users -a perf -n 1 >$@
+	bin/users ${USERARGS} >$@
