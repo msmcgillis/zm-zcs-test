@@ -146,6 +146,12 @@ $ /zimbra/zm-test
 $ /zimbra/zm-test -t lmtp
 ```
 
+When you finish testing and no longer want the container
+
+```
+make down
+```
+
 # Thoughts
 
 Ideally test would not be a long running service but instead define a particular test by modifying the docker-compose.yml then execute it using
@@ -163,6 +169,6 @@ If the above did work then inside the docker compose we could have multiple serv
 /zimbra/zm-test -t zsoap -u 200 -i -1
 ```
 
-Note the above is using the zm-test ability to adjust the default thread and loop counts. In jmeter the -user specifies the thread count and -iteration specifiec the loopcount for the thread. Using -1 for the loop count means the test will loop forever. So if you had 4 containers all running with the above you would be simulating 1200 concurrent users 200 smtp 500 imap 300 pop and 200 zsoap.
+Note the above is using the zm-test ability to adjust the default thread and loop counts. In jmeter the -user specifies the thread count and -iteration specifies the loopcount for the thread. Using -1 for the loop count means the test will loop forever. So if you had 4 containers all running with the above you would be simulating 1200 concurrent users 200 smtp 500 imap 300 pop and 200 zsoap.
 
-In general it seems Docker is not perfect for Batch processing at a service level. More investigation into how best to do Batch processing in Docker is needed. It seems in general run is recommended for batch processing however we don't have access to config and secrets with run. Although this is set up to create secrets and configs during the image generation we put the files in the image through the Dockerfile so the container will function went started with run or docker-compose vs docker stack. 
+In general it seems Docker is not perfect for batch processing at a service level. More investigation into how best to do batch processing in Docker is needed. It seems in general run is recommended for batch processing however we don't have access to config and secrets with run. Although this is set up to create secrets and configs during the image generation we put the files in the image through the Dockerfile so the container will function went started with run or docker-compose vs docker stack. 
