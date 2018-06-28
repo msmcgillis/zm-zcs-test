@@ -12,7 +12,7 @@ use POSIX;
 my $zmlt_home = "/opt/qa/zm-load-testing";
 my $args = "-n";
 my $defaultenv = "etc/env.prop";
-my $jmeter = "/opt/apache-jmeter-3.0/bin/jmeter";
+my $jmeter = "/opt/apache-jmeter/bin/jmeter";
 
 =head1 NAME
 
@@ -92,9 +92,7 @@ zm-test -t lmtp -u 2 -i 2
 my %o;
 GetOptions(\%o,'-test=s','-env=s','-load=s','-profile=s','-users=i',
            '-iterations=i','-service','-help','-man')
-        or pod2usage({-exitval  => 1,
-                      -verbose  => 99,
-                      -sections =>"SYNOPSIS"});
+        or pod2usage({-exitval  => 1,-verbose  => 0});
 if ($o{service}) {
   sleep;
 }
@@ -117,10 +115,23 @@ my $date=strftime("%Y%m%d%H%M%S",localtime);
 mkdir("/opt/qa/logs/$date");
 $args.=" -DACCOUNTS.csv=config/users.csv";
 $args.=" -DREQUEST.log=/opt/qa/logs/$date/$name-requests.log";
-$args.=" -Duser.classpath=src/build/jar/zjmeter.jar";
+if (-z "/opt/qa/zm-load-testing/src/build/jar/zm-sync-common.jar" ) {
+  $args.=" -Duser.classpath=src/build/jar/zjmeter.jar";
+} else {
+  $args.=" -Duser.classpath=src/build/jar/zjmeter.jar:".
+         "src/build/jar/zm-sync-common.jar";
+}
 $args.=" -j /opt/qa/logs/$date/$name-jmeter.log";
 $load=setproperty($load,"users");
 
+if ($o{test} eq "eas" &&
+    ! -f "/opt/qa/zm-load-testing/src/build/jar/zm-sync-common.jar" ) {
+  pod2usage({-exitval=>0,-verbose=>0,-message=>"The eas test is not supported ".
+             "without zm-sync-common.jar. This file must be manually copied ".
+             "to the build directory replacing the existing 0 length file, ".
+	     "before image generation. The zm-sync-common.jar can be found ".
+	     "in /opt/zimbra on a mailbox server if availble.\n"});
+}
 # execute jmeter test
 test($test,$env,$load,$profile);
 

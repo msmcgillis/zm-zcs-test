@@ -8,6 +8,10 @@ services:
     build:
       context: '.'
       dockerfile: 'build/Dockerfile'
+      args:
+        jmeter: 'apache-jmeter-3.0'
+        repo: 'https://github.com/Zimbra/zm-load-testing'
+        branch: 'master'
     volumes:
       - ./logs:/opt/qa/logs
     entrypoint:
